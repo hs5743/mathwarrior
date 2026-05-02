@@ -1,5 +1,4 @@
 const TOTAL_STAGES = 16;
-const GAS_WEB_APP_URL = "";
 const BASE_QUESTIONS = [
   {
     "q": "將 3 公斤的米平分成 4 袋，列式是 3÷4。若改用分數表示，被除數「3」會放在哪裡？",
@@ -1184,7 +1183,8 @@ const ui = {
   resultEyebrow: document.querySelector("#resultEyebrow"),
   finalScore: document.querySelector("#finalScore"),
   finalTime: document.querySelector("#finalTime"),
-  soundButton: document.querySelector("#soundButton")
+  soundButton: document.querySelector("#soundButton"),
+  feedback: document.querySelector("#answerFeedback")
 };
 
 const avatarConfig = {
@@ -1345,6 +1345,14 @@ function addMazeChunk(center, angle, seed = 0) {
     new THREE.MeshStandardMaterial({ color: 0x1f6f5b, roughness: 0.86 })
   ];
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a9388, roughness: 0.9 });
+  const logMat = new THREE.MeshStandardMaterial({ color: 0x7a5235, roughness: 0.88 });
+  const mushroomStemMat = new THREE.MeshStandardMaterial({ color: 0xf6e7c8, roughness: 0.82 });
+  const mushroomCapMats = [
+    new THREE.MeshStandardMaterial({ color: 0xe85d75, roughness: 0.76 }),
+    new THREE.MeshStandardMaterial({ color: 0xf4a261, roughness: 0.76 }),
+    new THREE.MeshStandardMaterial({ color: 0x8ecae6, roughness: 0.76 })
+  ];
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x58c7d8, roughness: 0.18, metalness: 0.08, transparent: true, opacity: 0.72 });
   const flowerMats = [
     new THREE.MeshStandardMaterial({ color: 0xffc857, roughness: 0.7 }),
     new THREE.MeshStandardMaterial({ color: 0xff7aa2, roughness: 0.7 }),
@@ -1411,7 +1419,29 @@ function addMazeChunk(center, angle, seed = 0) {
       flower.scale.set(1, 0.55, 1);
       place(flower, decorSide * (4.35 + i * 0.28), 0.2, 5.5 + i * 0.55, 0);
     }
+
+    if ((seed + decorSide) % 2 === 0) {
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 1.25, 10), logMat);
+      log.castShadow = true;
+      place(log, decorSide * 4.55, 0.26, 1.2, Math.PI / 2 + decorSide * 0.3);
+      log.rotation.z = Math.PI / 2;
+    }
+
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.28, 8), mushroomStemMat);
+    stem.castShadow = true;
+    place(stem, decorSide * 5.95, 0.16, 8.4 + (seed % 2), 0);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6), mushroomCapMats[(seed + (decorSide > 0 ? 1 : 0)) % mushroomCapMats.length]);
+    cap.scale.set(1.25, 0.55, 1.25);
+    cap.position.y = 0.19;
+    cap.castShadow = true;
+    stem.add(cap);
   });
+
+  if (seed % 3 === 1) {
+    const water = new THREE.Mesh(new THREE.CircleGeometry(0.85, 24), waterMat);
+    place(water, 3.6, 0.055, 10.5, 0);
+    water.rotation.x = -Math.PI / 2;
+  }
 
   if (seed % 2 === 0) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 8), trunkMat);
@@ -1593,6 +1623,15 @@ function showToast(message, duration = 1600) {
   showToast.timer = setTimeout(() => ui.toast.classList.remove("active"), duration);
 }
 
+function showAnswerFeedback(type, title, message) {
+  ui.feedback.className = `answer-feedback ${type} active`;
+  ui.feedback.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span>`;
+  clearTimeout(showAnswerFeedback.timer);
+  showAnswerFeedback.timer = setTimeout(() => {
+    ui.feedback.classList.remove("active");
+  }, 1150);
+}
+
 function shuffle(items) {
   const array = [...items];
   for (let i = array.length - 1; i > 0; i -= 1) {
@@ -1613,50 +1652,20 @@ function updateHud() {
   ui.progress.textContent = `${score} / ${TOTAL_STAGES}`;
   ui.timer.textContent = formatTime(elapsed);
   const progressRatio = score / TOTAL_STAGES;
-  scene.fog.density = 0.032 - progressRatio * 0.018;
-  scene.background.lerpColors(new THREE.Color(0x111a2f), new THREE.Color(0x86d8ff), progressRatio);
-  floorMaterial.color.lerpColors(new THREE.Color(0x253451), new THREE.Color(0x4f9c72), progressRatio);
+  scene.fog.density = 0.022 - progressRatio * 0.01;
+  scene.background.lerpColors(new THREE.Color(0x8ecae6), new THREE.Color(0xffe7a3), progressRatio);
+  floorMaterial.color.lerpColors(new THREE.Color(0x3d7c4f), new THREE.Color(0x6fbf73), progressRatio);
 }
 
 function loadQuestionsThenStart() {
   const startButton = document.querySelector("#startButton");
   startButton.disabled = true;
-  startButton.textContent = "讀取題庫中...";
-
-  if (window.google?.script?.run) {
-    window.google.script.run
-      .withSuccessHandler((rows) => {
-        if (Array.isArray(rows) && rows.length) questionBank = normalizeQuestions(rows);
-        startButton.disabled = false;
-        startButton.textContent = "確認出發";
-        startGame();
-      })
-      .withFailureHandler(() => {
-        startButton.disabled = false;
-        startButton.textContent = "確認出發";
-        startGame();
-      })
-      .getQuestions();
-  } else if (GAS_WEB_APP_URL) {
-    callGasApi("getQuestions")
-      .then((rows) => {
-        if (Array.isArray(rows) && rows.length) questionBank = normalizeQuestions(rows);
-      })
-      .catch(() => {
-        showToast("目前無法連線題庫，先使用內建練習題。", 1800);
-      })
-      .finally(() => {
-        startButton.disabled = false;
-        startButton.textContent = "確認出發";
-        startGame();
-      });
-  } else {
-    setTimeout(() => {
-      startButton.disabled = false;
-      startButton.textContent = "確認出發";
-      startGame();
-    }, 280);
-  }
+  startButton.textContent = "準備題庫中...";
+  setTimeout(() => {
+    startButton.disabled = false;
+    startButton.textContent = "確認出發";
+    startGame();
+  }, 220);
 }
 
 function normalizeQuestions(rows) {
@@ -1680,43 +1689,6 @@ function normalizeColor(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-async function callGasApi(action, payload = {}) {
-  const url = new URL(GAS_WEB_APP_URL);
-  url.searchParams.set("action", action);
-  Object.entries(payload).forEach(([key, value]) => url.searchParams.set(key, value));
-  return jsonp(url);
-}
-
-function jsonp(url) {
-  return new Promise((resolve, reject) => {
-    const callbackName = `mathwarriorCallback_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-    const script = document.createElement("script");
-    const timer = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("GAS API timeout"));
-    }, 12000);
-
-    function cleanup() {
-      window.clearTimeout(timer);
-      delete window[callbackName];
-      script.remove();
-    }
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve(data.records || data.questions || data);
-    };
-
-    url.searchParams.set("callback", callbackName);
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("GAS API script failed"));
-    };
-    script.src = url.toString();
-    document.body.appendChild(script);
-  });
-}
-
 function startGame() {
   hideScreens();
   state = "explore";
@@ -1733,6 +1705,8 @@ function startGame() {
   seedMazeAroundHero();
   removeMonster();
   ui.encounter.classList.remove("active");
+  ui.encounter.classList.remove("resolving");
+  ui.feedback.classList.remove("active");
   ui.actionDock.hidden = false;
   startTimer();
   updateHud();
@@ -1783,12 +1757,14 @@ function beginEncounter() {
   ui.monster.style.color = `#${data.color.toString(16).padStart(6, "0")}`;
   ui.question.textContent = data.q;
   ui.options.innerHTML = "";
+  ui.encounter.classList.remove("resolving");
 
   const options = shuffle(data.options.map((text, index) => ({ text, correct: index === data.ans })));
   options.forEach((option, index) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "option-button";
+    button.dataset.correct = option.correct ? "true" : "false";
     button.innerHTML = `<span>${String.fromCharCode(65 + index)}</span><strong>${escapeHtml(option.text)}</strong>`;
     button.addEventListener("click", () => answer(button, option.correct, options));
     ui.options.appendChild(button);
@@ -1893,6 +1869,7 @@ function removeMonster() {
 function answer(button, correct) {
   if (state !== "combat") return;
   state = "resolving";
+  ui.encounter.classList.add("resolving");
   [...ui.options.children].forEach((child) => {
     child.disabled = true;
   });
@@ -1900,6 +1877,7 @@ function answer(button, correct) {
   if (correct) {
     button.classList.add("correct");
     score += 1;
+    showAnswerFeedback("correct", "答對了！", "勇者命中守衛，迷霧退散。");
     burst(monster.position, 0xfff0ad, 34);
     beep(660, 0.08);
     setTimeout(() => {
@@ -1915,10 +1893,14 @@ function answer(button, correct) {
     }, 520);
   } else {
     button.classList.add("wrong");
+    [...ui.options.children].forEach((child) => {
+      if (child.dataset.correct === "true") child.classList.add("correct");
+    });
     hp -= 1;
     burst(hero.position, 0xff6b7a, 24);
     beep(180, 0.12);
     updateHud();
+    showAnswerFeedback("wrong", "答錯了", hp > 0 ? "HP -1，正確答案已標示，下一題再穩住。" : "HP 歸零，這次先撤退。");
     showToast(hp > 0 ? "受到一點傷害，換個策略再前進。" : "HP 歸零，這次探索先告一段落。");
     setTimeout(() => {
       removeMonster();
@@ -1932,6 +1914,7 @@ function nextExplore(delay) {
   setTimeout(() => {
     state = "explore";
     ui.encounter.classList.remove("active");
+    ui.encounter.classList.remove("resolving");
     ui.actionDock.hidden = false;
   }, delay);
 }
@@ -1959,29 +1942,12 @@ function saveRecord() {
   const local = JSON.parse(localStorage.getItem("mathwarriorRecords") || "[]");
   local.push(record);
   localStorage.setItem("mathwarriorRecords", JSON.stringify(local.slice(-80)));
-
-  if (window.google?.script?.run) {
-    window.google.script.run.saveRecord(playerName, score, timeString);
-  } else if (GAS_WEB_APP_URL) {
-    callGasApi("saveRecord", { playerName, score, timeString }).catch(() => {});
-  }
 }
 
 function showLeaderboard() {
   showScreen("leaderboard");
   ui.leaderboardContent.textContent = "讀取中...";
-  if (window.google?.script?.run) {
-    window.google.script.run
-      .withSuccessHandler(renderLeaderboard)
-      .withFailureHandler(() => renderLeaderboard(getLocalLeaderboard()))
-      .getLeaderboard();
-  } else if (GAS_WEB_APP_URL) {
-    callGasApi("getLeaderboard")
-      .then(renderLeaderboard)
-      .catch(() => renderLeaderboard(getLocalLeaderboard()));
-  } else {
-    renderLeaderboard(getLocalLeaderboard());
-  }
+  renderLeaderboard(getLocalLeaderboard());
 }
 
 function getLocalLeaderboard() {

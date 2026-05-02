@@ -180,6 +180,11 @@ button {
   translate: 0 0;
 }
 
+.encounter-card.resolving {
+  opacity: 0.76;
+  filter: saturate(0.82);
+}
+
 .encounter-card p {
   margin: 0 0 8px;
   color: var(--gold);
@@ -232,10 +237,14 @@ button {
 
 .option-button.correct {
   background: linear-gradient(180deg, rgba(55, 180, 131, 0.96), rgba(29, 120, 88, 0.96));
+  border-color: rgba(187, 247, 208, 0.95);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18), 0 0 28px rgba(74, 222, 128, 0.42);
 }
 
 .option-button.wrong {
   background: linear-gradient(180deg, rgba(245, 90, 107, 0.96), rgba(152, 36, 58, 0.96));
+  border-color: rgba(254, 202, 202, 0.95);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2), 0 0 28px rgba(248, 113, 113, 0.38);
 }
 
 .action-dock {
@@ -301,6 +310,54 @@ button:active {
 
 .toast.active {
   opacity: 1;
+}
+
+.answer-feedback {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  z-index: 4;
+  min-width: min(420px, calc(100vw - 36px));
+  padding: 18px 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: white;
+  background: rgba(17, 24, 43, 0.92);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.38);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -10px) scale(0.94);
+  transition: opacity 160ms ease, transform 160ms ease;
+  backdrop-filter: blur(14px);
+}
+
+.answer-feedback.active {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.answer-feedback strong {
+  display: block;
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  line-height: 1.08;
+}
+
+.answer-feedback span {
+  display: block;
+  margin-top: 7px;
+  color: #e6edf6;
+  font-weight: 850;
+}
+
+.answer-feedback.correct {
+  background: linear-gradient(180deg, rgba(18, 116, 77, 0.94), rgba(13, 79, 65, 0.94));
+  border-color: rgba(187, 247, 208, 0.72);
+}
+
+.answer-feedback.wrong {
+  background: linear-gradient(180deg, rgba(161, 45, 67, 0.94), rgba(91, 33, 54, 0.94));
+  border-color: rgba(254, 202, 202, 0.72);
 }
 
 .overlay {
