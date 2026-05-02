@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#121a2f" />
+    <title>數學勇者 MathWarrior</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23121a2f'/%3E%3Cpath d='M14 42 24 14l8 18 8-18 10 28H39l-2-7H27l-2 7H14Z' fill='%23ffd166'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  </head>
+  <body>
+    <div id="sceneHost" class="scene-host" aria-hidden="true"></div>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">MW</span>
+          <div>
+            <p>數學勇者</p>
+            <h1>MathWarrior</h1>
+          </div>
+        </div>
+
+        <div class="status-strip" aria-label="遊戲狀態">
+          <div>
+            <span>HP</span>
+            <strong id="hpText">3</strong>
+          </div>
+          <div>
+            <span>進度</span>
+            <strong id="progressText">0 / 16</strong>
+          </div>
+          <div>
+            <span>時間</span>
+            <strong id="timerText">00:00</strong>
+          </div>
+        </div>
+
+        <button id="soundButton" class="icon-button" type="button" aria-label="切換音效">音</button>
+      </header>
+
+      <section class="play-layer" aria-label="遊戲畫面">
+        <div class="encounter-card" id="encounterCard">
+          <p id="monsterLabel">破曉迷宮入口</p>
+          <h2 id="questionText">準備進入迷宮，解開數學封印。</h2>
+          <div id="optionGrid" class="option-grid"></div>
+        </div>
+
+        <div class="action-dock" id="actionDock">
+          <button id="leftButton" class="path-button" type="button">
+            <span>左路</span>
+            <strong>探索</strong>
+          </button>
+          <button id="rightButton" class="path-button" type="button">
+            <span>右路</span>
+            <strong>探索</strong>
+          </button>
+        </div>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <section id="titleScreen" class="overlay active" aria-label="開始畫面">
+      <div class="hero-copy">
+        <p class="eyebrow">3D math quest</p>
+        <h2>數學勇者<br />MathWarrior</h2>
+        <p>用小數、分數與除法的判斷力，突破 16 道迷宮封印。每答對一題，迷霧就退一步。</p>
+        <div class="title-actions">
+          <button id="enterButton" class="primary-button" type="button">進入迷宮</button>
+          <button id="leaderboardButton" class="secondary-button" type="button">英雄榜</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="setupScreen" class="overlay" aria-label="勇者設定">
+      <form id="setupForm" class="modal-panel">
+        <p class="eyebrow">勇者登錄</p>
+        <h2>選擇你的光之化身</h2>
+        <label class="field-label" for="playerName">勇者姓名</label>
+        <input id="playerName" name="playerName" type="text" maxlength="10" autocomplete="name" placeholder="輸入姓名" />
+
+        <div class="avatar-list" role="radiogroup" aria-label="選擇角色">
+          <label class="avatar-option selected">
+            <input type="radio" name="avatar" value="emerald" checked />
+            <span class="avatar-gem emerald"></span>
+            <strong>翠綠遊俠</strong>
+          </label>
+          <label class="avatar-option">
+            <input type="radio" name="avatar" value="azure" />
+            <span class="avatar-gem azure"></span>
+            <strong>湛藍騎士</strong>
+          </label>
+          <label class="avatar-option">
+            <input type="radio" name="avatar" value="ember" />
+            <span class="avatar-gem ember"></span>
+            <strong>赤焰法師</strong>
+          </label>
+        </div>
+
+        <button id="startButton" class="primary-button wide" type="submit">確認出發</button>
+      </form>
+    </section>
+
+    <section id="resultScreen" class="overlay" aria-label="結果畫面">
+      <div class="modal-panel result-panel">
+        <p id="resultEyebrow" class="eyebrow">挑戰完成</p>
+        <h2 id="resultTitle">破曉降臨</h2>
+        <p id="resultText"></p>
+        <div class="result-stats">
+          <div><span>答對</span><strong id="finalScore">0 / 16</strong></div>
+          <div><span>時間</span><strong id="finalTime">00:00</strong></div>
+        </div>
+        <div class="title-actions">
+          <button id="againButton" class="primary-button" type="button">再次冒險</button>
+          <button id="resultLeaderboardButton" class="secondary-button" type="button">英雄榜</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="leaderboardScreen" class="overlay" aria-label="英雄榜">
+      <div class="modal-panel leaderboard-panel">
+        <p class="eyebrow">Hall of heroes</p>
+        <h2>勇者英雄榜</h2>
+        <div id="leaderboardContent" class="leaderboard-content">讀取中...</div>
+        <button id="closeLeaderboardButton" class="secondary-button wide" type="button">返回</button>
+      </div>
+    </section>
+
+    <script src="game.js"></script>
+  </body>
+</html>
