@@ -1,6 +1,9 @@
+var MAX_SCORE = 16;
+var MAX_NAME_LENGTH = 10;
+
 function doGet(e) {
-  var action = e.parameter.action || "";
-  var callback = e.parameter.callback || "";
+  var action = getParam(e, "action", "");
+  var callback = getParam(e, "callback", "");
   var result;
 
   try {
@@ -10,31 +13,41 @@ function doGet(e) {
       result = { records: getLeaderboard() };
     } else if (action === "saveRecord") {
       saveRecord(
-        e.parameter.playerName || "勇者",
-        Number(e.parameter.score || 0),
-        e.parameter.timeString || "99分59秒"
+        sanitizeName(getParam(e, "playerName", "勇者")),
+        sanitizeScore(getParam(e, "score", "0")),
+        sanitizeTime(getParam(e, "timeString", "99分59秒"))
       );
       result = { ok: true };
     } else {
       result = { error: "unknown action" };
     }
   } catch (err) {
-    result = { error: String(err) };
+    result = { error: "server error" };
   }
 
-  var body = callback
-    ? callback + "(" + JSON.stringify(result) + ");"
-    : JSON.stringify(result);
+  var json = JSON.stringify(result);
+  var useJsonp = /^[A-Za-z_$][0-9A-Za-z_$]*$/.test(callback);
+  var body = useJsonp ? callback + "(" + json + ");" : json;
 
   return ContentService
     .createTextOutput(body)
-    .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
+    .setMimeType(useJsonp ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
+}
+
+function getParam(e, key, fallback) {
+  return e && e.parameter && e.parameter[key] !== undefined ? e.parameter[key] : fallback;
 }
 
 function saveRecord(playerName, score, timeString) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("紀錄");
-  if (sheet) {
-    sheet.appendRow([new Date(), playerName, score, timeString]);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(3000);
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("紀錄");
+    if (sheet) {
+      sheet.appendRow([new Date(), playerName, score, timeString]);
+    }
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -47,12 +60,11 @@ function getLeaderboard() {
   var records = [];
   for (var i = 1; i < data.length; i++) {
     if (data[i][1] === "") continue;
-    var timeStr = data[i][3] ? data[i][3].toString() : "99分59秒";
-    var match = timeStr.match(/(\d+)分(\d+)秒/);
-    var totalSecs = match ? (parseInt(match[1], 10) * 60 + parseInt(match[2], 10)) : 9999;
+    var timeStr = sanitizeTime(data[i][3] ? data[i][3].toString() : "99分59秒");
+    var totalSecs = timeToSeconds(timeStr);
     records.push({
-      name: data[i][1].toString(),
-      score: parseInt(data[i][2], 10) || 0,
+      name: sanitizeName(data[i][1].toString()),
+      score: sanitizeScore(data[i][2]),
       timeStr: timeStr,
       totalSecs: totalSecs
     });
@@ -76,15 +88,16 @@ function getQuestions() {
 
   for (var i = 1; i < data.length; i++) {
     if (data[i][0] === "") continue;
+    var ans = sanitizeAnswer(data[i][5]);
     questions.push({
-      q: data[i][0].toString(),
+      q: data[i][0].toString().slice(0, 160),
       options: [
         formatOption(data[i][1]),
         formatOption(data[i][2]),
         formatOption(data[i][3]),
         formatOption(data[i][4])
       ],
-      ans: parseInt(data[i][5], 10) || 0,
+      ans: ans,
       monster: monsters[i % monsters.length],
       color: colors[i % colors.length],
       shape: shapes[i % shapes.length]
@@ -97,5 +110,40 @@ function formatOption(value) {
   if (Object.prototype.toString.call(value) === "[object Date]") {
     return (value.getMonth() + 1) + "/" + value.getDate();
   }
-  return value.toString();
+  return value.toString().slice(0, 80);
+}
+
+function sanitizeName(value) {
+  return value
+    .toString()
+    .replace(/[<>"'`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_NAME_LENGTH) || "勇者";
+}
+
+function sanitizeScore(value) {
+  var score = parseInt(value, 10);
+  if (isNaN(score)) return 0;
+  return Math.max(0, Math.min(MAX_SCORE, score));
+}
+
+function sanitizeAnswer(value) {
+  var ans = parseInt(value, 10);
+  if (isNaN(ans)) return 0;
+  return Math.max(0, Math.min(3, ans));
+}
+
+function sanitizeTime(value) {
+  var text = value.toString();
+  var match = text.match(/^(\d{1,2})分(\d{1,2})秒$/);
+  if (!match) return "99分59秒";
+  var mins = Math.max(0, Math.min(99, parseInt(match[1], 10)));
+  var secs = Math.max(0, Math.min(59, parseInt(match[2], 10)));
+  return mins + "分" + secs + "秒";
+}
+
+function timeToSeconds(timeStr) {
+  var match = timeStr.match(/^(\d{1,2})分(\d{1,2})秒$/);
+  return match ? (parseInt(match[1], 10) * 60 + parseInt(match[2], 10)) : 9999;
 }

@@ -50,3 +50,12 @@ const GAS_WEB_APP_URL = "你的 Apps Script Web App URL";
 - `?action=getQuestions`
 - `?action=getLeaderboard`
 - `?action=saveRecord&playerName=...&score=...&timeString=...`
+
+## 建議的安全設定
+
+- 不要把 Google Sheets API key、OAuth client secret、服務帳戶 JSON 金鑰放進 GitHub Pages 或前端程式碼。
+- 建議使用綁定試算表的 Apps Script Web App 當中介層，程式只存取這份遊戲試算表。
+- 試算表只放遊戲需要的 `題庫` 與 `紀錄`，不要放學生個資、成績冊或其他敏感資料。
+- Apps Script 部署時，如果只給校內學生使用，優先選擇「只有網域內使用者」；若必須公開，才選「任何人」。
+- `apps-script/Code.gs` 已限制姓名長度、分數範圍、時間格式與 JSONP callback 名稱，降低亂寫資料與注入風險。
+- 若 Web App URL 洩漏或被濫用，請到 Apps Script 的部署管理中建立新部署或停用舊部署。
