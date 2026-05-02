@@ -45,7 +45,7 @@
 const GAS_WEB_APP_URL = "你的 Apps Script Web App URL";
 ```
 
-API 建議支援這三個 `action` query：
+可直接參考 `apps-script/Code.gs`。API 支援這三個 `action` query：
 
 - `?action=getQuestions`
 - `?action=getLeaderboard`

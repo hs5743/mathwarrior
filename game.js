@@ -382,7 +382,7 @@ const BASE_QUESTIONS = [
     "q": "比較 0.6 和 5/8 (即0.625) 的大小。在數線上，誰的位置比較靠右邊（比較大）？",
     "options": [
       "0.6",
-      "2026-05-08 00:00:00",
+      "5/8",
       "一樣大",
       "無法比較"
     ],
@@ -1217,9 +1217,11 @@ let cameraTarget = new THREE.Vector3(0, 4.2, 12);
 let particles = [];
 let runes = [];
 let mazePieces = [];
+let dynamicMazePieces = [];
 let moveTarget = null;
 let facing = 0;
 let destinationFacing = 0;
+let mazeStep = 0;
 
 function initScene() {
   const host = document.querySelector("#sceneHost");
@@ -1350,6 +1352,86 @@ function addMazeArchitecture() {
       mazePieces.push(light);
     }
   }
+}
+
+function addMazeChunk(center, angle, seed = 0) {
+  const forward = new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle));
+  const side = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x123c31, roughness: 0.94 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x1e6b55, roughness: 0.84 });
+  const vineMat = new THREE.MeshStandardMaterial({ color: 0x6ac86f, roughness: 0.8 });
+  const amberMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.78 });
+
+  const place = (mesh, localX, localY, localZ, yaw = 0) => {
+    const pos = center.clone().addScaledVector(side, localX).addScaledVector(forward, localZ);
+    mesh.position.set(pos.x, localY, pos.z);
+    mesh.rotation.y = angle + yaw;
+    scene.add(mesh);
+    mazePieces.push(mesh);
+    dynamicMazePieces.push(mesh);
+    return mesh;
+  };
+
+  for (let z = -6; z <= 14; z += 5) {
+    const widthPulse = Math.sin((seed + z) * 0.7) * 0.8;
+    [-1, 1].forEach((wallSide) => {
+      const wallX = wallSide * (7.4 + widthPulse);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.85, 4.2, 6), wallMat);
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+      place(trunk, wallX, 2.1, z, wallSide * 0.18);
+
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.25, 4.8, 7), leafMat);
+      canopy.castShadow = true;
+      canopy.position.y = 4.1;
+      trunk.add(canopy);
+
+      if ((seed + z + wallSide) % 2 === 0) {
+        const vine = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.04, 8, 28), vineMat);
+        place(vine, wallX - wallSide * 0.45, 4.45, z + 0.4, wallSide * 0.7);
+        vine.rotation.x = Math.PI / 2;
+      }
+    });
+  }
+
+  [-1, 1].forEach((branchSide) => {
+    if ((seed + branchSide) % 3 !== 0) {
+      const branch = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.08, 1.2), amberMat);
+      place(branch, branchSide * 5.3, 0.075, 6 + branchSide * 2, branchSide * 0.72);
+    }
+  });
+
+  const gate = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.055, 10, 52), amberMat);
+  gate.rotation.x = Math.PI / 2;
+  place(gate, 0, 0.12, 9, 0);
+
+  while (dynamicMazePieces.length > 170) {
+    const old = dynamicMazePieces.shift();
+    scene.remove(old);
+    const idx = mazePieces.indexOf(old);
+    if (idx >= 0) mazePieces.splice(idx, 1);
+    old.geometry?.dispose?.();
+    if (old.material && !Array.isArray(old.material)) old.material.dispose?.();
+  }
+}
+
+function seedMazeAroundHero() {
+  clearDynamicMaze();
+  mazeStep = 0;
+  const forward = new THREE.Vector3(Math.sin(destinationFacing), 0, -Math.cos(destinationFacing));
+  addMazeChunk(hero.position.clone(), destinationFacing, 0);
+  addMazeChunk(hero.position.clone().addScaledVector(forward, 10), destinationFacing, 1);
+}
+
+function clearDynamicMaze() {
+  dynamicMazePieces.forEach((piece) => {
+    scene.remove(piece);
+    const idx = mazePieces.indexOf(piece);
+    if (idx >= 0) mazePieces.splice(idx, 1);
+    piece.geometry?.dispose?.();
+    if (piece.material && !Array.isArray(piece.material)) piece.material.dispose?.();
+  });
+  dynamicMazePieces = [];
 }
 
 function addPathRunes() {
@@ -1539,10 +1621,37 @@ async function callGasApi(action, payload = {}) {
   const url = new URL(GAS_WEB_APP_URL);
   url.searchParams.set("action", action);
   Object.entries(payload).forEach(([key, value]) => url.searchParams.set(key, value));
-  const response = await fetch(url.toString(), { method: "GET" });
-  if (!response.ok) throw new Error(`GAS API failed: ${response.status}`);
-  const data = await response.json();
-  return data.records || data.questions || data;
+  return jsonp(url);
+}
+
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `mathwarriorCallback_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const script = document.createElement("script");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("GAS API timeout"));
+    }, 12000);
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data.records || data.questions || data);
+    };
+
+    url.searchParams.set("callback", callbackName);
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("GAS API script failed"));
+    };
+    script.src = url.toString();
+    document.body.appendChild(script);
+  });
 }
 
 function startGame() {
@@ -1558,6 +1667,7 @@ function startGame() {
   facing = 0;
   destinationFacing = 0;
   createHero();
+  seedMazeAroundHero();
   removeMonster();
   ui.encounter.classList.remove("active");
   ui.actionDock.hidden = false;
@@ -1587,6 +1697,9 @@ function walk(direction) {
   const side = new THREE.Vector3(Math.cos(destinationFacing), 0, Math.sin(destinationFacing));
   const sway = direction === "left" ? -1.6 : 1.6;
   const nextHero = hero.position.clone().addScaledVector(forward, 11.8).addScaledVector(side, sway);
+  mazeStep += 1;
+  addMazeChunk(nextHero.clone().addScaledVector(forward, 4), destinationFacing, mazeStep * 3);
+  addMazeChunk(nextHero.clone().addScaledVector(forward, 13), destinationFacing, mazeStep * 3 + 1);
   cameraTarget = nextHero.clone().addScaledVector(forward, -7.2);
   cameraTarget.y = 4.2;
   moveTarget = {
