@@ -53,6 +53,10 @@ button {
   image-rendering: auto;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .app-shell {
   position: relative;
   z-index: 2;
@@ -160,10 +164,12 @@ button {
 
 .encounter-card {
   position: absolute;
-  left: 50%;
-  bottom: max(88px, env(safe-area-inset-bottom));
-  width: min(980px, calc(100vw - 24px));
-  transform: translateX(-50%);
+  left: 18px;
+  top: clamp(150px, 17vh, 178px);
+  width: min(520px, calc(100vw - 36px));
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  transform: none;
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
@@ -195,13 +201,13 @@ button {
 
 .encounter-card h2 {
   margin: 0 0 14px;
-  font-size: clamp(0.98rem, 2.1vw, 1.28rem);
+  font-size: clamp(0.98rem, 1.45vw, 1.22rem);
   line-height: 1.38;
 }
 
 .option-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -316,7 +322,7 @@ button:active {
 .answer-feedback {
   position: absolute;
   left: 50%;
-  top: 20%;
+  top: 18%;
   z-index: 4;
   min-width: min(420px, calc(100vw - 36px));
   padding: 18px 22px;
@@ -576,8 +582,11 @@ input[type="text"]:focus {
   }
 
   .encounter-card {
-    bottom: max(110px, env(safe-area-inset-bottom));
-    max-height: 46vh;
+    left: 12px;
+    top: auto;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: calc(100vw - 24px);
+    max-height: 38vh;
     overflow-y: auto;
   }
 
@@ -589,7 +598,9 @@ input[type="text"]:focus {
 
 @media (max-height: 620px) {
   .encounter-card {
-    bottom: 92px;
+    top: 92px;
+    bottom: auto;
+    max-height: calc(100vh - 112px);
   }
 
   .action-dock {

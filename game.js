@@ -1317,8 +1317,14 @@ function drawSunAndHills() {
 function drawPerspectivePath(progress) {
   const horizon = height * 0.43;
   const bottom = height + 16;
-  const centerShift = (moveDirection === "left" ? -1 : 1) * progress * width * 0.08;
+  const turn = moveDirection === "left" ? -1 : 1;
+  const eased = progress * progress * (3 - 2 * progress);
+  const centerShift = turn * eased * width * 0.1;
   const cx = width * 0.5 + centerShift;
+  const forkY = height * 0.5;
+
+  drawForkBranch(cx, horizon, forkY, -1, progress);
+  drawForkBranch(cx, horizon, forkY, 1, progress);
 
   const path = ctx.createLinearGradient(0, horizon, 0, bottom);
   path.addColorStop(0, "#c79b5e");
@@ -1354,6 +1360,48 @@ function drawPerspectivePath(progress) {
   ctx.moveTo(cx + width * 0.055, horizon);
   ctx.lineTo(width * 0.72, bottom);
   ctx.stroke();
+}
+
+function drawForkBranch(cx, horizon, forkY, side, progress) {
+  const turn = moveDirection === "left" ? -1 : 1;
+  const chosen = gameMode === "moving" && side === turn;
+  const fade = gameMode === "moving" && side !== turn ? 0.32 : 1;
+  const branchReach = width * 0.16;
+  const branchWideNear = width * 0.135;
+  const branchWideFar = width * 0.04;
+  const pull = chosen ? progress * width * 0.055 * side : 0;
+  const nearX = cx + side * branchReach + pull;
+  const farLeft = cx + side * width * 0.02;
+  const farRight = cx + side * width * 0.075;
+
+  ctx.save();
+  ctx.globalAlpha = fade;
+  const branch = ctx.createLinearGradient(0, horizon, 0, forkY + height * 0.09);
+  branch.addColorStop(0, "#d4ad74");
+  branch.addColorStop(1, "#9c6b40");
+  ctx.fillStyle = branch;
+  ctx.beginPath();
+  ctx.moveTo(farLeft, horizon + 3);
+  ctx.lineTo(farRight, horizon + 2);
+  ctx.lineTo(nearX + side * branchWideNear, forkY + height * 0.12);
+  ctx.lineTo(nearX - side * branchWideFar, forkY + height * 0.07);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = chosen ? "rgba(255, 224, 142, 0.7)" : "rgba(74, 55, 31, 0.38)";
+  ctx.lineWidth = chosen ? 5 : 3;
+  ctx.beginPath();
+  ctx.moveTo(farLeft, horizon + 4);
+  ctx.lineTo(nearX - side * branchWideFar, forkY + height * 0.07);
+  ctx.moveTo(farRight, horizon + 4);
+  ctx.lineTo(nearX + side * branchWideNear, forkY + height * 0.12);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255, 235, 172, 0.82)";
+  ctx.beginPath();
+  ctx.ellipse(nearX + side * branchWideNear * 0.72, forkY + height * 0.09, 8, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawForestLayers(progress) {
@@ -1440,12 +1488,12 @@ function drawBattleScene() {
   overlay.addColorStop(0, "rgba(31, 79, 65, 0.12)");
   overlay.addColorStop(1, "rgba(20, 28, 44, 0.36)");
   ctx.fillStyle = overlay;
-  ctx.fillRect(0, height * 0.25, width, height * 0.5);
+  ctx.fillRect(0, height * 0.25, width, height * 0.62);
 
-  const heroX = width * 0.28 + (resolveType === "correct" ? attackProgress * width * 0.1 : 0);
-  const heroY = height * 0.58 + Math.sin(lastTime * 0.008) * 2;
-  const monsterX = width * 0.72 + (resolveType === "wrong" ? -attackProgress * width * 0.1 : 0);
-  const monsterY = height * 0.46 + Math.sin(lastTime * 0.006) * 5;
+  const heroX = width * 0.29 + (resolveType === "correct" ? attackProgress * width * 0.1 : 0);
+  const heroY = height * 0.64 + Math.sin(lastTime * 0.008) * 2;
+  const monsterX = width * 0.73 + (resolveType === "wrong" ? -attackProgress * width * 0.1 : 0);
+  const monsterY = height * 0.43 + Math.sin(lastTime * 0.006) * 5;
 
   drawShadow(heroX, heroY + 68, 74, 18, "rgba(0,0,0,0.23)");
   drawShadow(monsterX, monsterY + 75, 90, 20, "rgba(0,0,0,0.25)");
