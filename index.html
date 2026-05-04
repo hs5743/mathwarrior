@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#121a2f" />
     <title>數學勇者 MathWarrior</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23121a2f'/%3E%3Cpath d='M14 42 24 14l8 18 8-18 10 28H39l-2-7H27l-2 7H14Z' fill='%23ffd166'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260504-3" />
   </head>
   <body>
     <div id="sceneHost" class="scene-host" aria-hidden="true"></div>
@@ -18,6 +18,7 @@
           <div>
             <p>數學勇者</p>
             <h1>MathWarrior</h1>
+            <span class="version-badge">v2026.05.04-3</span>
           </div>
         </div>
 
@@ -64,9 +65,9 @@
 
     <section id="titleScreen" class="overlay active" aria-label="開始畫面">
       <div class="hero-copy">
-        <p class="eyebrow">3D math quest</p>
+        <p class="eyebrow">2D math quest</p>
         <h2>數學勇者<br />MathWarrior</h2>
-        <p>用小數、分數與除法的判斷力，突破 16 道迷宮封印。每答對一題，迷霧就退一步。</p>
+        <p>走進森林迷宮，用分數、小數與除法的判斷擊敗守衛。完成 16 道封印，讓破曉重新照亮道路。</p>
         <div class="title-actions">
           <button id="enterButton" class="primary-button" type="button">進入迷宮</button>
           <button id="leaderboardButton" class="secondary-button" type="button">英雄榜</button>
@@ -77,9 +78,9 @@
     <section id="setupScreen" class="overlay" aria-label="勇者設定">
       <form id="setupForm" class="modal-panel">
         <p class="eyebrow">勇者登錄</p>
-        <h2>選擇你的光之化身</h2>
+        <h2>選擇你的迷宮化身</h2>
         <label class="field-label" for="playerName">勇者姓名</label>
-        <input id="playerName" name="playerName" type="text" maxlength="10" autocomplete="name" placeholder="輸入姓名" />
+        <input id="playerName" name="playerName" type="text" maxlength="10" autocomplete="name" placeholder="請輸入姓名" />
 
         <div class="avatar-list" role="radiogroup" aria-label="選擇角色">
           <label class="avatar-option selected">
@@ -95,7 +96,7 @@
           <label class="avatar-option">
             <input type="radio" name="avatar" value="ember" />
             <span class="avatar-gem ember"></span>
-            <strong>赤焰法師</strong>
+            <strong>赤紅法師</strong>
           </label>
         </div>
 
@@ -109,11 +110,11 @@
         <h2 id="resultTitle">破曉降臨</h2>
         <p id="resultText"></p>
         <div class="result-stats">
-          <div><span>答對</span><strong id="finalScore">0 / 16</strong></div>
+          <div><span>關卡</span><strong id="finalScore">0 / 16</strong></div>
           <div><span>時間</span><strong id="finalTime">00:00</strong></div>
         </div>
         <div class="title-actions">
-          <button id="againButton" class="primary-button" type="button">再次冒險</button>
+          <button id="againButton" class="primary-button" type="button">再次挑戰</button>
           <button id="resultLeaderboardButton" class="secondary-button" type="button">英雄榜</button>
         </div>
       </div>
@@ -128,6 +129,6 @@
       </div>
     </section>
 
-    <script src="game.js"></script>
+    <script src="game.js?v=20260504-3"></script>
   </body>
 </html>

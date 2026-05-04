@@ -115,6 +115,15 @@ button {
   line-height: 1;
 }
 
+.version-badge {
+  display: inline-block;
+  margin-top: 5px;
+  color: rgba(247, 243, 232, 0.72);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .status-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(72px, 1fr));
