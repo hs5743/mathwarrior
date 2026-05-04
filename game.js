@@ -1188,424 +1188,443 @@ const ui = {
 };
 
 const avatarConfig = {
-  emerald: { color: 0x4fd1a5, emissive: 0x1c7f67, shape: "tetra" },
-  azure: { color: 0x65c7f7, emissive: 0x1f6feb, shape: "octa" },
-  ember: { color: 0xff6b7a, emissive: 0xb83147, shape: "ico" }
+  emerald: { main: "#2fbf7f", dark: "#167455", cape: "#0f5a47", accent: "#ffe08a" },
+  azure: { main: "#4ba3f2", dark: "#1e5fae", cape: "#183f7a", accent: "#d8f3ff" },
+  ember: { main: "#ef6b5a", dark: "#9e2f3c", cape: "#6d1f33", accent: "#ffd166" }
 };
 
-let questionBank = [...BASE_QUESTIONS];
-let pool = [];
-let state = "title";
+let canvas;
+let ctx;
+let dpr = 1;
+let width = 0;
+let height = 0;
+let lastTime = 0;
+let gameMode = "title";
 let playerName = "勇者";
 let avatar = "emerald";
 let hp = 3;
 let score = 0;
-let startTime = 0;
 let elapsed = 0;
-let soundOn = true;
+let startTime = 0;
 let timerId = 0;
-
-let scene;
-let camera;
-let renderer;
-let hero;
-let monster;
-let heroLight;
-let floorMaterial;
-let clock = new THREE.Clock();
-let cameraTarget = new THREE.Vector3(0, 4.2, 12);
+let questionBank = [...BASE_QUESTIONS];
+let pool = [];
+let currentQuestion = null;
+let pathSeed = 7;
+let moveProgress = 0;
+let moveDirection = "right";
+let attackProgress = 0;
+let resolveType = "";
+let shakeTime = 0;
+let soundOn = true;
 let particles = [];
-let runes = [];
-let mazePieces = [];
-let dynamicMazePieces = [];
-let moveTarget = null;
-let facing = 0;
-let destinationFacing = 0;
-let mazeStep = 0;
 
-function initScene() {
+function init2D() {
   const host = document.querySelector("#sceneHost");
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8ecae6);
-  scene.fog = new THREE.FogExp2(0x9ed8c5, 0.022);
-
-  camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 220);
-  camera.position.set(0, 4.2, 12);
-
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  host.appendChild(renderer.domElement);
-
-  scene.add(new THREE.HemisphereLight(0xdff7ff, 0x24472e, 1.65));
-  const sun = new THREE.DirectionalLight(0xfff0b8, 1.7);
-  sun.position.set(8, 20, 12);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  scene.add(sun);
-
-  heroLight = new THREE.PointLight(0x4fd1a5, 2.2, 16);
-  scene.add(heroLight);
-
-  floorMaterial = new THREE.MeshStandardMaterial({ color: 0x3d7c4f, roughness: 0.96, metalness: 0.02 });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 260, 18, 52), floorMaterial);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.z = -90;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  addEnvironment();
-  createHero();
-
+  canvas = document.createElement("canvas");
+  canvas.id = "gameCanvas";
+  canvas.setAttribute("aria-label", "數學勇者 2D 偽 3D 遊戲畫面");
+  host.replaceChildren(canvas);
+  ctx = canvas.getContext("2d", { alpha: false });
+  resize();
   window.addEventListener("resize", resize);
-  animate();
-}
-
-function addEnvironment() {
-  const hillMat = new THREE.MeshStandardMaterial({ color: 0x2f6f46, roughness: 0.98 });
-  const hillGeo = new THREE.ConeGeometry(18, 18, 9);
-  for (let i = 0; i < 18; i += 1) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const hill = new THREE.Mesh(hillGeo, hillMat);
-    hill.position.set(side * (32 + (i % 3) * 7), 8, 5 - i * 13);
-    hill.rotation.y = i * 0.38;
-    hill.receiveShadow = true;
-    scene.add(hill);
-  }
-
-  const fireflies = new THREE.BufferGeometry();
-  const positions = new Float32Array(260 * 3);
-  for (let i = 0; i < positions.length; i += 3) {
-    positions[i] = (Math.random() - 0.5) * 70;
-    positions[i + 1] = 2.5 + Math.random() * 10;
-    positions[i + 2] = 12 - Math.random() * 170;
-  }
-  fireflies.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  scene.add(new THREE.Points(fireflies, new THREE.PointsMaterial({ color: 0xfff2a6, size: 0.11, transparent: true, opacity: 0.72 })));
-}
-
-function addMazeArchitecture() {
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x133f32, roughness: 0.92, metalness: 0.02 });
-  const vineMat = new THREE.MeshStandardMaterial({ color: 0x54a45f, roughness: 0.86 });
-  const amberMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.78 });
-  const wallGeo = new THREE.BoxGeometry(2.4, 4.8, 1.4);
-  const vineGeo = new THREE.TorusGeometry(0.62, 0.045, 8, 28);
-  const flameGeo = new THREE.SphereGeometry(0.16, 10, 8);
-
-  for (let i = 0; i < 34; i += 1) {
-    const z = 8 - i * 6;
-    const bend = Math.sin(i * 0.72) * 4.2;
-    [-1, 1].forEach((side) => {
-      const block = new THREE.Mesh(wallGeo, wallMat);
-      block.position.set(bend + side * (7.8 + (i % 3) * 0.45), 2.25, z);
-      block.rotation.y = side * 0.16 + Math.sin(i) * 0.08;
-      block.castShadow = true;
-      block.receiveShadow = true;
-      scene.add(block);
-      mazePieces.push(block);
-
-      if (i % 2 === 0) {
-        const vine = new THREE.Mesh(vineGeo, vineMat);
-        vine.position.set(block.position.x - side * 0.08, 4.25, z + 0.15);
-        vine.rotation.set(Math.PI / 2, 0, side * 0.75);
-        scene.add(vine);
-        mazePieces.push(vine);
-      }
-    });
-
-    if (i % 5 === 2) {
-      const side = i % 10 === 2 ? -1 : 1;
-      const branch = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.08, 1.15), amberMat);
-      branch.position.set(bend + side * 5.7, 0.08, z - 1.4);
-      branch.rotation.y = side * 0.72;
-      scene.add(branch);
-      mazePieces.push(branch);
-    }
-
-    if (i % 4 === 0) {
-      const light = new THREE.Mesh(flameGeo, amberMat);
-      light.position.set(bend, 0.25, z);
-      scene.add(light);
-      mazePieces.push(light);
-    }
-  }
-}
-
-function addMazeChunk(center, angle, seed = 0) {
-  const forward = new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle));
-  const side = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-  const pathMat = new THREE.MeshStandardMaterial({ color: 0x9a6b3f, roughness: 0.98 });
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x3f8f56, roughness: 0.96 });
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6f482d, roughness: 0.92 });
-  const leafMats = [
-    new THREE.MeshStandardMaterial({ color: 0x2f8b57, roughness: 0.82 }),
-    new THREE.MeshStandardMaterial({ color: 0x4f9f45, roughness: 0.84 }),
-    new THREE.MeshStandardMaterial({ color: 0x1f6f5b, roughness: 0.86 })
-  ];
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a9388, roughness: 0.9 });
-  const logMat = new THREE.MeshStandardMaterial({ color: 0x7a5235, roughness: 0.88 });
-  const mushroomStemMat = new THREE.MeshStandardMaterial({ color: 0xf6e7c8, roughness: 0.82 });
-  const mushroomCapMats = [
-    new THREE.MeshStandardMaterial({ color: 0xe85d75, roughness: 0.76 }),
-    new THREE.MeshStandardMaterial({ color: 0xf4a261, roughness: 0.76 }),
-    new THREE.MeshStandardMaterial({ color: 0x8ecae6, roughness: 0.76 })
-  ];
-  const waterMat = new THREE.MeshStandardMaterial({ color: 0x58c7d8, roughness: 0.18, metalness: 0.08, transparent: true, opacity: 0.72 });
-  const flowerMats = [
-    new THREE.MeshStandardMaterial({ color: 0xffc857, roughness: 0.7 }),
-    new THREE.MeshStandardMaterial({ color: 0xff7aa2, roughness: 0.7 }),
-    new THREE.MeshStandardMaterial({ color: 0x7dd3fc, roughness: 0.7 })
-  ];
-  const lanternMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-
-  const place = (mesh, localX, localY, localZ, yaw = 0) => {
-    const pos = center.clone().addScaledVector(side, localX).addScaledVector(forward, localZ);
-    mesh.position.set(pos.x, localY, pos.z);
-    mesh.rotation.y = angle + yaw;
-    scene.add(mesh);
-    mazePieces.push(mesh);
-    dynamicMazePieces.push(mesh);
-    return mesh;
-  };
-
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 22, 1, 5), pathMat);
-  path.receiveShadow = true;
-  place(path, 0, 0.035, 4, 0);
-  path.rotation.x = -Math.PI / 2;
-
-  [-1, 1].forEach((edge) => {
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 22, 1, 1), grassMat);
-    grass.receiveShadow = true;
-    place(grass, edge * 5.15, 0.032, 4, 0);
-    grass.rotation.x = -Math.PI / 2;
-  });
-
-  for (let z = -5; z <= 13; z += 6) {
-    [-1, 1].forEach((treeSide) => {
-      const treeX = treeSide * (8.2 + ((seed + z) % 2) * 0.55);
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 3.8, 8), trunkMat);
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
-      place(trunk, treeX, 1.9, z, treeSide * 0.08);
-
-      const lower = new THREE.Mesh(new THREE.SphereGeometry(1.55, 10, 8), leafMats[Math.abs(seed + z) % leafMats.length]);
-      lower.position.set(0, 2.25, 0);
-      lower.scale.set(1.25, 0.82, 1.05);
-      lower.castShadow = true;
-      trunk.add(lower);
-
-      const upper = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 8), leafMats[Math.abs(seed + z + 1) % leafMats.length]);
-      upper.position.set(0.18 * treeSide, 3.25, 0);
-      upper.scale.set(1, 0.86, 0.95);
-      upper.castShadow = true;
-      trunk.add(upper);
-
-      const shrub = new THREE.Mesh(new THREE.SphereGeometry(0.78, 8, 6), leafMats[Math.abs(seed + z + 2) % leafMats.length]);
-      shrub.scale.set(1.45, 0.58, 0.9);
-      shrub.castShadow = true;
-      place(shrub, treeSide * 5.2, 0.55, z + 1.8, 0);
-    });
-  }
-
-  [-1, 1].forEach((decorSide) => {
-    const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(0.44, 0), stoneMat);
-    stone.castShadow = true;
-    place(stone, decorSide * 3.95, 0.38, -2 + (seed % 4), decorSide * 0.4);
-
-    for (let i = 0; i < 3; i += 1) {
-      const flower = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), flowerMats[(seed + i) % flowerMats.length]);
-      flower.scale.set(1, 0.55, 1);
-      place(flower, decorSide * (4.35 + i * 0.28), 0.2, 5.5 + i * 0.55, 0);
-    }
-
-    if ((seed + decorSide) % 2 === 0) {
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 1.25, 10), logMat);
-      log.castShadow = true;
-      place(log, decorSide * 4.55, 0.26, 1.2, Math.PI / 2 + decorSide * 0.3);
-      log.rotation.z = Math.PI / 2;
-    }
-
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.28, 8), mushroomStemMat);
-    stem.castShadow = true;
-    place(stem, decorSide * 5.95, 0.16, 8.4 + (seed % 2), 0);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6), mushroomCapMats[(seed + (decorSide > 0 ? 1 : 0)) % mushroomCapMats.length]);
-    cap.scale.set(1.25, 0.55, 1.25);
-    cap.position.y = 0.19;
-    cap.castShadow = true;
-    stem.add(cap);
-  });
-
-  if (seed % 3 === 1) {
-    const water = new THREE.Mesh(new THREE.CircleGeometry(0.85, 24), waterMat);
-    place(water, 3.6, 0.055, 10.5, 0);
-    water.rotation.x = -Math.PI / 2;
-  }
-
-  if (seed % 2 === 0) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 8), trunkMat);
-    post.castShadow = true;
-    place(post, -3.85, 0.65, 9.2, 0);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), lanternMat);
-    lamp.position.y = 0.72;
-    post.add(lamp);
-    const light = new THREE.PointLight(0xffd166, 0.55, 6);
-    light.position.y = 0.75;
-    post.add(light);
-  }
-
-  while (dynamicMazePieces.length > 170) {
-    const old = dynamicMazePieces.shift();
-    scene.remove(old);
-    const idx = mazePieces.indexOf(old);
-    if (idx >= 0) mazePieces.splice(idx, 1);
-    disposeObject(old);
-  }
-}
-
-function seedMazeAroundHero() {
-  clearDynamicMaze();
-  mazeStep = 0;
-  const forward = new THREE.Vector3(Math.sin(destinationFacing), 0, -Math.cos(destinationFacing));
-  addMazeChunk(hero.position.clone(), destinationFacing, 0);
-  addMazeChunk(hero.position.clone().addScaledVector(forward, 10), destinationFacing, 1);
-}
-
-function clearDynamicMaze() {
-  dynamicMazePieces.forEach((piece) => {
-    scene.remove(piece);
-    const idx = mazePieces.indexOf(piece);
-    if (idx >= 0) mazePieces.splice(idx, 1);
-    disposeObject(piece);
-  });
-  dynamicMazePieces = [];
-}
-
-function disposeObject(root) {
-  root.traverse?.((obj) => {
-    obj.geometry?.dispose?.();
-    if (obj.material) {
-      if (Array.isArray(obj.material)) obj.material.forEach((mat) => mat.dispose?.());
-      else obj.material.dispose?.();
-    }
-  });
-}
-
-function addPathRunes() {
-  const ringGeo = new THREE.TorusGeometry(1.2, 0.035, 8, 48);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.64 });
-  for (let i = 0; i < 24; i += 1) {
-    const rune = new THREE.Mesh(ringGeo, ringMat);
-    rune.rotation.x = Math.PI / 2;
-    rune.position.set((i % 2 === 0 ? -1 : 1) * 2.6, 0.045, 4 - i * 8);
-    scene.add(rune);
-    runes.push(rune);
-  }
-}
-
-function createHero() {
-  if (hero) {
-    scene.remove(hero);
-    disposeObject(hero);
-  }
-  const cfg = avatarConfig[avatar];
-  const bodyMat = new THREE.MeshStandardMaterial({ color: cfg.color, roughness: 0.48, metalness: 0.12 });
-  const clothMat = new THREE.MeshStandardMaterial({ color: cfg.emissive, roughness: 0.72 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd6a5, roughness: 0.55 });
-  const leatherMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.82 });
-  const metalMat = new THREE.MeshStandardMaterial({ color: 0xd9e6ee, roughness: 0.3, metalness: 0.65 });
-
-  hero = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 1.05, 16), bodyMat);
-  body.position.y = 0.72;
-  body.castShadow = true;
-  hero.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), skinMat);
-  head.position.y = 1.55;
-  head.castShadow = true;
-  hero.add(head);
-
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 8), leatherMat);
-  hair.position.set(0, 1.73, -0.03);
-  hair.scale.set(1.04, 0.42, 0.9);
-  hair.castShadow = true;
-  hero.add(hair);
-
-  const cape = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.9, 0.08), clothMat);
-  cape.position.set(0, 0.8, 0.38);
-  cape.rotation.x = -0.24;
-  cape.castShadow = true;
-  hero.add(cape);
-
-  const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 18), metalMat);
-  shield.position.set(-0.55, 0.88, -0.08);
-  shield.rotation.set(Math.PI / 2, 0, 0.32);
-  shield.castShadow = true;
-  hero.add(shield);
-
-  const sword = new THREE.Group();
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.045), metalMat);
-  blade.position.y = 0.32;
-  const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.07, 0.07), leatherMat);
-  hilt.position.y = -0.15;
-  sword.add(blade, hilt);
-  sword.position.set(0.58, 0.92, -0.04);
-  sword.rotation.z = -0.55;
-  sword.castShadow = true;
-  hero.add(sword);
-
-  hero.position.set(0, 1.35, 6.8);
-  scene.add(hero);
-  heroLight.color.setHex(cfg.color);
+  requestAnimationFrame(loop);
 }
 
 function resize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  width = Math.max(320, window.innerWidth);
+  height = Math.max(480, window.innerHeight);
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = clock.getDelta();
-  const t = clock.elapsedTime;
-  facing += (destinationFacing - facing) * 0.055;
-  const forward = new THREE.Vector3(Math.sin(facing), 0, -Math.cos(facing));
+function loop(time) {
+  const dt = Math.min(0.033, (time - lastTime) / 1000 || 0.016);
+  lastTime = time;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
 
-  runes.forEach((rune, index) => {
-    rune.rotation.z = t * 0.35 + index;
-    rune.material.opacity = 0.42 + Math.sin(t * 2 + index) * 0.16;
-  });
-
-  if (moveTarget) {
-    camera.position.lerp(moveTarget.camera, 0.055);
-    hero.position.lerp(moveTarget.hero, 0.07);
-    hero.position.y = 1.35 + Math.abs(Math.sin(t * 10)) * 0.25;
-    if (camera.position.distanceTo(moveTarget.camera) < 0.18) {
-      moveTarget = null;
-      beginEncounter();
+function update(dt) {
+  if (gameMode === "moving") {
+    moveProgress += dt * 1.8;
+    if (moveProgress >= 1) {
+      moveProgress = 1;
+      beginBattle();
     }
+  }
+  if (gameMode === "resolving") attackProgress = Math.min(1, attackProgress + dt * 1.7);
+  if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+  for (let i = particles.length - 1; i >= 0; i -= 1) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 220 * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function render() {
+  drawExploreScene(gameMode === "moving" ? moveProgress : 0);
+  if (gameMode === "battle" || gameMode === "resolving") drawBattleScene();
+  drawParticles();
+}
+
+function drawExploreScene(progress) {
+  const sky = ctx.createLinearGradient(0, 0, 0, height);
+  sky.addColorStop(0, "#95d8f4");
+  sky.addColorStop(0.48, "#c6f0c4");
+  sky.addColorStop(1, "#2f7a49");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, width, height);
+
+  drawSunAndHills();
+  drawPerspectivePath(progress);
+  drawForestLayers(progress);
+  if (gameMode !== "battle" && gameMode !== "resolving") drawExploreHero();
+}
+
+function drawSunAndHills() {
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#ffe6a3";
+  ctx.beginPath();
+  ctx.arc(width * 0.82, height * 0.16, Math.min(width, height) * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  const hillColors = ["#4f9b68", "#3f8b5b", "#2f7350"];
+  for (let h = 0; h < 3; h += 1) {
+    ctx.fillStyle = hillColors[h];
+    ctx.beginPath();
+    ctx.moveTo(0, height * (0.42 + h * 0.055));
+    for (let x = 0; x <= width; x += width / 6) {
+      ctx.quadraticCurveTo(x + width / 12, height * (0.31 + h * 0.06 + Math.sin(x * 0.02 + h) * 0.025), x + width / 6, height * (0.42 + h * 0.055));
+    }
+    ctx.lineTo(width, height);
+    ctx.lineTo(0, height);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPerspectivePath(progress) {
+  const horizon = height * 0.43;
+  const bottom = height + 16;
+  const centerShift = (moveDirection === "left" ? -1 : 1) * progress * width * 0.08;
+  const cx = width * 0.5 + centerShift;
+
+  const path = ctx.createLinearGradient(0, horizon, 0, bottom);
+  path.addColorStop(0, "#c79b5e");
+  path.addColorStop(1, "#815334");
+  ctx.fillStyle = path;
+  ctx.beginPath();
+  ctx.moveTo(cx - width * 0.055, horizon);
+  ctx.lineTo(cx + width * 0.055, horizon);
+  ctx.lineTo(width * 0.72, bottom);
+  ctx.lineTo(width * 0.28, bottom);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.24)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 10; i += 1) {
+    const t = ((i / 10 + progress * 0.7) % 1);
+    const y = lerp(horizon, bottom, t * t);
+    const half = lerp(width * 0.045, width * 0.23, t);
+    ctx.globalAlpha = 0.15 + t * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(cx - half, y);
+    ctx.lineTo(cx + half, y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = "rgba(79, 61, 33, 0.42)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(cx - width * 0.055, horizon);
+  ctx.lineTo(width * 0.28, bottom);
+  ctx.moveTo(cx + width * 0.055, horizon);
+  ctx.lineTo(width * 0.72, bottom);
+  ctx.stroke();
+}
+
+function drawForestLayers(progress) {
+  const count = 9;
+  for (let i = count; i >= 0; i -= 1) {
+    const t = ((i / count + progress * 0.85) % 1);
+    const scale = 0.28 + t * 1.15;
+    const y = lerp(height * 0.43, height * 0.94, t * t);
+    const gap = lerp(width * 0.09, width * 0.34, t);
+    const jitter = seededWave(pathSeed + i) * width * 0.025;
+    drawTree(width * 0.5 - gap + jitter, y, scale, i);
+    drawTree(width * 0.5 + gap + jitter, y, scale, i + 4);
+    if (i % 2 === 0) {
+      drawBush(width * 0.5 - gap * 0.72, y + scale * 18, scale * 0.7, i);
+      drawBush(width * 0.5 + gap * 0.72, y + scale * 18, scale * 0.7, i + 2);
+    }
+    if (i % 3 === 1) drawDecoration(width * 0.5 + (i % 2 ? -gap * 0.52 : gap * 0.52), y + scale * 25, scale, i);
+  }
+}
+
+function drawTree(x, y, s, seed) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = "#6f482d";
+  roundRect(-6, -48, 12, 50, 5, true);
+  const colors = ["#23784f", "#2f9b58", "#3c8d62"];
+  drawLeafBlob(0, -58, 32, colors[seed % colors.length]);
+  drawLeafBlob(-18, -45, 24, colors[(seed + 1) % colors.length]);
+  drawLeafBlob(18, -44, 25, colors[(seed + 2) % colors.length]);
+  ctx.restore();
+}
+
+function drawLeafBlob(x, y, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 0.9, r * 0.68, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBush(x, y, s, seed) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = seed % 2 ? "#63ad55" : "#3c9a5d";
+  for (let i = -1; i <= 1; i += 1) {
+    ctx.beginPath();
+    ctx.ellipse(i * 15, 0, 18, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawDecoration(x, y, s, seed) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  if (seed % 2 === 0) {
+    ctx.fillStyle = "#8a9388";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 9, -0.2, 0, Math.PI * 2);
+    ctx.fill();
   } else {
-    hero.rotation.y += dt * 0.9;
-    hero.rotation.x = Math.sin(t * 1.5) * 0.18;
-    hero.position.y = 1.35 + Math.sin(t * 2.2) * 0.08;
+    ctx.fillStyle = "#f7e6ca";
+    roundRect(-3, -12, 6, 14, 3, true);
+    ctx.fillStyle = seed % 4 === 1 ? "#ff7aa2" : "#ffc857";
+    ctx.beginPath();
+    ctx.ellipse(0, -14, 11, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.restore();
+}
 
-  if (monster) {
-    monster.rotation.y -= dt * 0.65;
-    monster.position.y = monster.userData.baseY + Math.sin(t * 2.1) * 0.18;
+function drawExploreHero() {
+  const bob = Math.sin(lastTime * 0.006) * 4;
+  drawHero(width * 0.5, height * 0.78 + bob, 1.05, avatarConfig[avatar], false);
+}
+
+function drawBattleScene() {
+  ctx.save();
+  const shake = shakeTime > 0 ? Math.sin(lastTime * 0.08) * 6 : 0;
+  ctx.translate(shake, 0);
+  const overlay = ctx.createLinearGradient(0, height * 0.24, 0, height);
+  overlay.addColorStop(0, "rgba(31, 79, 65, 0.12)");
+  overlay.addColorStop(1, "rgba(20, 28, 44, 0.36)");
+  ctx.fillStyle = overlay;
+  ctx.fillRect(0, height * 0.25, width, height * 0.5);
+
+  const heroX = width * 0.28 + (resolveType === "correct" ? attackProgress * width * 0.1 : 0);
+  const heroY = height * 0.58 + Math.sin(lastTime * 0.008) * 2;
+  const monsterX = width * 0.72 + (resolveType === "wrong" ? -attackProgress * width * 0.1 : 0);
+  const monsterY = height * 0.46 + Math.sin(lastTime * 0.006) * 5;
+
+  drawShadow(heroX, heroY + 68, 74, 18, "rgba(0,0,0,0.23)");
+  drawShadow(monsterX, monsterY + 75, 90, 20, "rgba(0,0,0,0.25)");
+  drawHero(heroX, heroY, 1.25, avatarConfig[avatar], true);
+  drawMonster(monsterX, monsterY, 1.05, currentQuestion || BASE_QUESTIONS[0], resolveType === "correct" && attackProgress > 0.25);
+  if (gameMode === "resolving") drawImpact(resolveType, heroX, heroY, monsterX, monsterY);
+  ctx.restore();
+}
+
+function drawHero(x, y, s, cfg, battle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = cfg.cape;
+  ctx.beginPath();
+  ctx.moveTo(-26, 5);
+  ctx.lineTo(25, 6);
+  ctx.lineTo(36, 70);
+  ctx.lineTo(-34, 72);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = cfg.main;
+  roundRect(-20, -6, 40, 56, 12, true);
+  ctx.fillStyle = "#ffd7a8";
+  ctx.beginPath();
+  ctx.arc(0, -28, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#6b4226";
+  ctx.beginPath();
+  ctx.ellipse(0, -38, 20, 10, 0, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(-7, -29, 3, 3);
+  ctx.fillRect(6, -29, 3, 3);
+  ctx.strokeStyle = cfg.accent;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, -22, 8, 0.15, Math.PI - 0.15);
+  ctx.stroke();
+  ctx.fillStyle = "#d9e6ee";
+  ctx.beginPath();
+  ctx.ellipse(-27, 15, 13, 20, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#8ca3af";
+  ctx.stroke();
+  if (battle) {
+    ctx.strokeStyle = "#eef6ff";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(24, 4);
+    ctx.lineTo(48, -35);
+    ctx.stroke();
+    ctx.strokeStyle = "#6b4226";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(19, 11);
+    ctx.lineTo(30, -3);
+    ctx.stroke();
   }
+  ctx.restore();
+}
 
-  heroLight.position.set(hero.position.x, hero.position.y + 0.6, hero.position.z + 0.6);
-  mazePieces.forEach((piece, index) => {
-    if (piece.material?.opacity) piece.material.opacity = 0.56 + Math.sin(t * 1.6 + index) * 0.16;
-  });
-  updateParticles(dt);
-  const lookPoint = hero.position.clone().addScaledVector(forward, 9);
-  camera.lookAt(lookPoint.x, 1.55, lookPoint.z);
-  renderer.render(scene, camera);
+function drawMonster(x, y, s, data, hit) {
+  const color = numberToHex(data.color || 0x4fd1a5);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s * (hit ? 1.08 : 1), s * (hit ? 0.92 : 1));
+  ctx.globalAlpha = hit && Math.floor(lastTime / 70) % 2 === 0 ? 0.55 : 1;
+  if (data.shape === "box") drawStoneMonster(color);
+  else if (data.shape === "octa") drawFlyingMonster(color);
+  else if (data.shape === "crystal") drawCrystalMonster(color);
+  else drawSlimeMonster(color);
+  ctx.restore();
+}
+
+function drawSlimeMonster(color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 20, 54, 38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, -14, 40, 36, 0, 0, Math.PI * 2);
+  ctx.fill();
+  drawMonsterFace();
+}
+
+function drawStoneMonster(color) {
+  ctx.fillStyle = "#8a9388";
+  roundRect(-42, -20, 84, 75, 10, true);
+  ctx.fillStyle = color;
+  roundRect(-32, -64, 64, 42, 8, true);
+  ctx.fillStyle = "#747d73";
+  roundRect(-65, -8, 25, 55, 8, true);
+  roundRect(40, -8, 25, 55, 8, true);
+  drawMonsterFace();
+}
+
+function drawFlyingMonster(color) {
+  ctx.fillStyle = "rgba(32,58,75,0.78)";
+  ctx.beginPath();
+  ctx.ellipse(-42, -6, 40, 15, -0.45, 0, Math.PI * 2);
+  ctx.ellipse(42, -6, 40, 15, 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 48, 38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  drawMonsterFace();
+}
+
+function drawCrystalMonster(color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, -70);
+  ctx.lineTo(42, 0);
+  ctx.lineTo(24, 58);
+  ctx.lineTo(-24, 58);
+  ctx.lineTo(-42, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.28)";
+  ctx.beginPath();
+  ctx.moveTo(0, -58);
+  ctx.lineTo(18, -2);
+  ctx.lineTo(0, 46);
+  ctx.closePath();
+  ctx.fill();
+  drawMonsterFace();
+}
+
+function drawMonsterFace() {
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(-16, -4, 8, 0, Math.PI * 2);
+  ctx.arc(16, -4, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#111827";
+  ctx.beginPath();
+  ctx.arc(-16, -4, 3, 0, Math.PI * 2);
+  ctx.arc(16, -4, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 13, 12, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+}
+
+function drawImpact(type, heroX, heroY, monsterX, monsterY) {
+  const t = attackProgress;
+  ctx.save();
+  if (type === "correct") {
+    const x = lerp(heroX + 40, monsterX - 38, t);
+    const y = lerp(heroY - 20, monsterY - 10, t);
+    ctx.strokeStyle = "rgba(255, 240, 173, 0.9)";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(x - 28, y + 18);
+    ctx.lineTo(x + 28, y - 18);
+    ctx.stroke();
+  } else if (type === "wrong") {
+    ctx.fillStyle = "rgba(255, 107, 122, 0.85)";
+    ctx.beginPath();
+    ctx.arc(heroX, heroY - 30, 18 + Math.sin(t * Math.PI) * 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 function showScreen(name) {
@@ -1627,9 +1646,7 @@ function showAnswerFeedback(type, title, message) {
   ui.feedback.className = `answer-feedback ${type} active`;
   ui.feedback.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span>`;
   clearTimeout(showAnswerFeedback.timer);
-  showAnswerFeedback.timer = setTimeout(() => {
-    ui.feedback.classList.remove("active");
-  }, 1150);
+  showAnswerFeedback.timer = setTimeout(() => ui.feedback.classList.remove("active"), 1250);
 }
 
 function shuffle(items) {
@@ -1651,10 +1668,6 @@ function updateHud() {
   ui.hp.textContent = hp;
   ui.progress.textContent = `${score} / ${TOTAL_STAGES}`;
   ui.timer.textContent = formatTime(elapsed);
-  const progressRatio = score / TOTAL_STAGES;
-  scene.fog.density = 0.022 - progressRatio * 0.01;
-  scene.background.lerpColors(new THREE.Color(0x8ecae6), new THREE.Color(0xffe7a3), progressRatio);
-  floorMaterial.color.lerpColors(new THREE.Color(0x3d7c4f), new THREE.Color(0x6fbf73), progressRatio);
 }
 
 function loadQuestionsThenStart() {
@@ -1665,58 +1678,32 @@ function loadQuestionsThenStart() {
     startButton.disabled = false;
     startButton.textContent = "確認出發";
     startGame();
-  }, 220);
-}
-
-function normalizeQuestions(rows) {
-  return rows
-    .filter((row) => row && row.q && Array.isArray(row.options) && row.options.length >= 4)
-    .map((row, index) => ({
-      q: String(row.q),
-      options: row.options.slice(0, 4).map(String),
-      ans: Number.isFinite(Number(row.ans)) ? Number(row.ans) : 0,
-      monster: row.monster || `迷宮守衛 ${index + 1}`,
-      color: normalizeColor(row.color, BASE_QUESTIONS[index % BASE_QUESTIONS.length].color),
-      shape: row.shape || BASE_QUESTIONS[index % BASE_QUESTIONS.length].shape
-    }));
-}
-
-function normalizeColor(value, fallback) {
-  if (typeof value === "number") return value;
-  if (typeof value !== "string") return fallback;
-  const cleaned = value.trim().replace("#", "").replace(/^0x/i, "");
-  const parsed = Number.parseInt(cleaned, 16);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  }, 180);
 }
 
 function startGame() {
   hideScreens();
-  state = "explore";
+  gameMode = "explore";
   hp = 3;
   score = 0;
   elapsed = 0;
+  pathSeed += 17;
   startTime = Date.now();
   pool = shuffle(questionBank);
-  camera.position.set(0, 4.2, 12);
-  hero.position.set(0, 1.35, 6.8);
-  facing = 0;
-  destinationFacing = 0;
-  createHero();
-  seedMazeAroundHero();
-  removeMonster();
-  ui.encounter.classList.remove("active");
-  ui.encounter.classList.remove("resolving");
+  particles = [];
+  currentQuestion = null;
+  ui.encounter.classList.remove("active", "resolving");
   ui.feedback.classList.remove("active");
   ui.actionDock.hidden = false;
   startTimer();
   updateHud();
-  showToast(`${playerName}，選一條路開始探索。`);
+  showToast(`${playerName}，選一條路深入迷宮吧`);
 }
 
 function startTimer() {
   clearInterval(timerId);
   timerId = setInterval(() => {
-    if (state === "explore" || state === "combat" || state === "moving") {
+    if (["explore", "moving", "battle", "resolving"].includes(gameMode)) {
       elapsed = Math.floor((Date.now() - startTime) / 1000);
       updateHud();
     }
@@ -1724,212 +1711,96 @@ function startTimer() {
 }
 
 function walk(direction) {
-  if (state !== "explore") return;
-  state = "moving";
+  if (gameMode !== "explore") return;
+  gameMode = "moving";
+  moveDirection = direction;
+  moveProgress = 0;
   ui.actionDock.hidden = true;
-  ui.encounter.classList.remove("active");
-  const turn = direction === "left" ? -0.46 : 0.46;
-  destinationFacing = Math.max(-1.05, Math.min(1.05, destinationFacing + turn));
-  const forward = new THREE.Vector3(Math.sin(destinationFacing), 0, -Math.cos(destinationFacing));
-  const side = new THREE.Vector3(Math.cos(destinationFacing), 0, Math.sin(destinationFacing));
-  const sway = direction === "left" ? -1.6 : 1.6;
-  const nextHero = hero.position.clone().addScaledVector(forward, 11.8).addScaledVector(side, sway);
-  mazeStep += 1;
-  addMazeChunk(nextHero.clone().addScaledVector(forward, 4), destinationFacing, mazeStep * 3);
-  addMazeChunk(nextHero.clone().addScaledVector(forward, 13), destinationFacing, mazeStep * 3 + 1);
-  cameraTarget = nextHero.clone().addScaledVector(forward, -7.2);
-  cameraTarget.y = 4.2;
-  moveTarget = {
-    camera: cameraTarget,
-    hero: new THREE.Vector3(nextHero.x, 1.35, nextHero.z)
-  };
-  showToast(direction === "left" ? "你鑽進左側藤蔓小徑。" : "你轉向右側石牆岔路。", 900);
+  ui.encounter.classList.remove("active", "resolving");
+  ui.feedback.classList.remove("active");
+  showToast(direction === "left" ? "左路的藤蔓被撥開了" : "右路的光點正在引路", 800);
 }
 
-function beginEncounter() {
-  state = "combat";
-  const data = pool.pop() || shuffle(questionBank).pop();
+function beginBattle() {
+  gameMode = "battle";
+  moveProgress = 0;
+  pathSeed += moveDirection === "left" ? 5 : 9;
+  currentQuestion = pool.pop() || shuffle(questionBank).pop();
   if (pool.length < 2) pool = shuffle(questionBank);
-  createMonster(data);
-  const forward = new THREE.Vector3(Math.sin(facing), 0, -Math.cos(facing));
-
-  ui.monster.textContent = `Lv.${score + 1} ${data.monster}`;
-  ui.monster.style.color = `#${data.color.toString(16).padStart(6, "0")}`;
-  ui.question.textContent = data.q;
+  ui.monster.textContent = `Lv.${score + 1} ${currentQuestion.monster}`;
+  ui.monster.style.color = numberToHex(currentQuestion.color);
+  ui.question.textContent = currentQuestion.q;
   ui.options.innerHTML = "";
-  ui.encounter.classList.remove("resolving");
-
-  const options = shuffle(data.options.map((text, index) => ({ text, correct: index === data.ans })));
+  const options = shuffle(currentQuestion.options.map((text, index) => ({ text, correct: index === currentQuestion.ans })));
   options.forEach((option, index) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "option-button";
     button.dataset.correct = option.correct ? "true" : "false";
     button.innerHTML = `<span>${String.fromCharCode(65 + index)}</span><strong>${escapeHtml(option.text)}</strong>`;
-    button.addEventListener("click", () => answer(button, option.correct, options));
+    button.addEventListener("click", () => answer(button, option.correct));
     ui.options.appendChild(button);
   });
   ui.encounter.classList.add("active");
 }
 
-function createMonster(data) {
-  removeMonster();
-  const mainMat = new THREE.MeshStandardMaterial({
-    color: data.color,
-    emissive: data.color,
-    emissiveIntensity: 0.08,
-    roughness: 0.58,
-    metalness: 0.06
-  });
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a9388, roughness: 0.9 });
-  const wingMat = new THREE.MeshStandardMaterial({ color: 0x203a4b, roughness: 0.65, transparent: true, opacity: 0.78 });
-
-  monster = new THREE.Group();
-
-  if (data.shape === "box") {
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.7, 1.15), stoneMat);
-    torso.position.y = 0.95;
-    torso.castShadow = true;
-    monster.add(torso);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 1), mainMat);
-    head.position.y = 2.25;
-    head.castShadow = true;
-    monster.add(head);
-    [-0.88, 0.88].forEach((x) => {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.05, 0.48), stoneMat);
-      arm.position.set(x, 1.05, 0);
-      arm.rotation.z = x > 0 ? -0.18 : 0.18;
-      arm.castShadow = true;
-      monster.add(arm);
-    });
-  } else if (data.shape === "octa") {
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 12), mainMat);
-    body.scale.set(1.15, 0.72, 1.35);
-    body.position.y = 0.9;
-    body.castShadow = true;
-    monster.add(body);
-    [-0.92, 0.92].forEach((x) => {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.08, 0.58), wingMat);
-      wing.position.set(x, 1.02, 0);
-      wing.rotation.z = x > 0 ? -0.42 : 0.42;
-      wing.castShadow = true;
-      monster.add(wing);
-    });
-    for (let i = -1; i <= 1; i += 1) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.7, 6), stoneMat);
-      leg.position.set(i * 0.38, 0.28, 0.45);
-      leg.rotation.x = 0.55;
-      monster.add(leg);
-    }
-  } else if (data.shape === "crystal") {
-    const robe = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.75, 18), mainMat);
-    robe.position.y = 0.9;
-    robe.castShadow = true;
-    monster.add(robe);
-    const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.2, 6), new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.2, metalness: 0.32 }));
-    crystal.position.y = 2.15;
-    crystal.castShadow = true;
-    monster.add(crystal);
-  } else {
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1.12, 24, 16), mainMat);
-    body.scale.set(1.18, 0.78, 1.08);
-    body.position.y = 0.82;
-    body.castShadow = true;
-    monster.add(body);
-    const crown = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.55, 7), new THREE.MeshStandardMaterial({ color: 0x7fd7a8, roughness: 0.7 }));
-    crown.position.y = 1.65;
-    crown.castShadow = true;
-    monster.add(crown);
-  }
-
-  [-0.28, 0.28].forEach((x) => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), eyeMat);
-    eye.position.set(x, 1.28, 0.82);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), pupilMat);
-    pupil.position.set(0, -0.01, 0.09);
-    eye.add(pupil);
-    monster.add(eye);
-  });
-
-  const monsterPos = hero.position.clone().addScaledVector(new THREE.Vector3(Math.sin(facing), 0, -Math.cos(facing)), 8);
-  monster.position.set(monsterPos.x, 0.05, monsterPos.z);
-  monster.userData.baseY = 0.05;
-  scene.add(monster);
-}
-
-function removeMonster() {
-  if (!monster) return;
-  scene.remove(monster);
-  disposeObject(monster);
-  monster = null;
-}
-
 function answer(button, correct) {
-  if (state !== "combat") return;
-  state = "resolving";
+  if (gameMode !== "battle") return;
+  gameMode = "resolving";
+  resolveType = correct ? "correct" : "wrong";
+  attackProgress = 0;
   ui.encounter.classList.add("resolving");
-  [...ui.options.children].forEach((child) => {
-    child.disabled = true;
-  });
-
+  [...ui.options.children].forEach((child) => { child.disabled = true; });
   if (correct) {
-    button.classList.add("correct");
     score += 1;
-    showAnswerFeedback("correct", "答對了！", "勇者命中守衛，迷霧退散。");
-    burst(monster.position, 0xfff0ad, 34);
+    button.classList.add("correct");
+    addSparkles(width * 0.72, height * 0.45, "#fff0ad", 24);
+    showAnswerFeedback("correct", "答對了！", "勇者出擊，怪物的迷霧被擊散");
     beep(660, 0.08);
     setTimeout(() => {
-      removeMonster();
       updateHud();
       if (score >= TOTAL_STAGES) finishGame(true);
-      else if (score % 4 === 0) {
-        showToast(`突破 ${score} 道封印，迷霧正在散開。`, 1900);
-        nextExplore(1000);
-      } else {
-        nextExplore(650);
-      }
-    }, 520);
+      else nextExplore(score % 4 === 0 ? `已通過 ${score} 關，迷宮變得更明亮了` : "繼續探索下一段道路");
+    }, 1250);
   } else {
+    hp -= 1;
     button.classList.add("wrong");
     [...ui.options.children].forEach((child) => {
       if (child.dataset.correct === "true") child.classList.add("correct");
     });
-    hp -= 1;
-    burst(hero.position, 0xff6b7a, 24);
-    beep(180, 0.12);
+    shakeTime = 0.42;
+    addSparkles(width * 0.28, height * 0.55, "#ff6b7a", 18);
     updateHud();
-    showAnswerFeedback("wrong", "答錯了", hp > 0 ? "HP -1，正確答案已標示，下一題再穩住。" : "HP 歸零，這次先撤退。");
-    showToast(hp > 0 ? "受到一點傷害，換個策略再前進。" : "HP 歸零，這次探索先告一段落。");
+    showAnswerFeedback("wrong", "答錯了", hp > 0 ? "HP -1，正確答案已經亮起" : "HP 歸零，需要重新挑戰");
+    beep(180, 0.12);
     setTimeout(() => {
-      removeMonster();
       if (hp <= 0) finishGame(false);
-      else nextExplore(400);
-    }, 950);
+      else nextExplore("整理思路，再往前探索");
+    }, 1500);
   }
 }
 
-function nextExplore(delay) {
-  setTimeout(() => {
-    state = "explore";
-    ui.encounter.classList.remove("active");
-    ui.encounter.classList.remove("resolving");
-    ui.actionDock.hidden = false;
-  }, delay);
+function nextExplore(message) {
+  gameMode = "explore";
+  resolveType = "";
+  attackProgress = 0;
+  currentQuestion = null;
+  ui.encounter.classList.remove("active", "resolving");
+  ui.actionDock.hidden = false;
+  if (message) showToast(message, 1500);
 }
 
 function finishGame(won) {
   clearInterval(timerId);
-  state = won ? "win" : "gameover";
+  gameMode = won ? "win" : "gameover";
   elapsed = Math.floor((Date.now() - startTime) / 1000);
-  ui.encounter.classList.remove("active");
+  ui.encounter.classList.remove("active", "resolving");
   ui.actionDock.hidden = true;
   ui.resultEyebrow.textContent = won ? "挑戰完成" : "探索失敗";
   ui.resultTitle.textContent = won ? "破曉降臨" : "暫時撤退";
   ui.resultText.textContent = won
-    ? `${playerName} 完成 16 道考驗，讓迷宮重新亮起來。`
-    : `${playerName} 已解開 ${score} 道封印。休息一下，下一次會更穩。`;
+    ? `${playerName} 通過 16 關，成功走出數學迷宮`
+    : `${playerName} 完成了 ${score} 關，休息一下再重新出發`;
   ui.finalScore.textContent = `${score} / ${TOTAL_STAGES}`;
   ui.finalTime.textContent = formatTime(elapsed);
   saveRecord();
@@ -1954,8 +1825,8 @@ function getLocalLeaderboard() {
   const local = JSON.parse(localStorage.getItem("mathwarriorRecords") || "[]");
   const demo = [
     { name: "晨光勇者", score: 16, timeStr: "02分18秒", totalSecs: 138 },
-    { name: "分數騎士", score: 15, timeStr: "03分05秒", totalSecs: 185 },
-    { name: "小數法師", score: 12, timeStr: "02分52秒", totalSecs: 172 }
+    { name: "森林騎士", score: 15, timeStr: "03分05秒", totalSecs: 185 },
+    { name: "計算法師", score: 12, timeStr: "02分52秒", totalSecs: 172 }
   ];
   return [...local, ...demo]
     .sort((a, b) => (b.score === a.score ? a.totalSecs - b.totalSecs : b.score - a.score))
@@ -1964,15 +1835,14 @@ function getLocalLeaderboard() {
 
 function renderLeaderboard(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    ui.leaderboardContent.textContent = "目前還沒有紀錄。";
+    ui.leaderboardContent.textContent = "目前還沒有勇者留下紀錄";
     return;
   }
-  const safeRows = rows.slice(0, 10);
   ui.leaderboardContent.innerHTML = `
     <table class="leaderboard-table">
-      <thead><tr><th>排名</th><th>勇者</th><th>題數</th><th>時間</th></tr></thead>
+      <thead><tr><th>排名</th><th>勇者</th><th>關卡</th><th>時間</th></tr></thead>
       <tbody>
-        ${safeRows.map((row, index) => `
+        ${rows.slice(0, 10).map((row, index) => `
           <tr>
             <td>${index + 1}</td>
             <td>${escapeHtml(row.name || "勇者")}</td>
@@ -1985,30 +1855,17 @@ function renderLeaderboard(rows) {
   `;
 }
 
-function burst(position, color, count) {
-  const mat = new THREE.MeshBasicMaterial({ color });
-  const geo = new THREE.TetrahedronGeometry(0.16, 0);
+function addSparkles(x, y, color, count) {
   for (let i = 0; i < count; i += 1) {
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(position);
-    mesh.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 5, (Math.random() - 0.5) * 7);
-    mesh.userData.life = 1;
-    scene.add(mesh);
-    particles.push(mesh);
-  }
-}
-
-function updateParticles(dt) {
-  for (let i = particles.length - 1; i >= 0; i -= 1) {
-    const p = particles[i];
-    p.position.addScaledVector(p.userData.velocity, dt);
-    p.userData.velocity.y -= dt * 5.8;
-    p.userData.life -= dt * 1.8;
-    p.scale.setScalar(Math.max(0, p.userData.life));
-    if (p.userData.life <= 0) {
-      scene.remove(p);
-      particles.splice(i, 1);
-    }
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 280,
+      vy: -80 - Math.random() * 180,
+      size: 3 + Math.random() * 4,
+      life: 0.55 + Math.random() * 0.45,
+      color
+    });
   }
 }
 
@@ -2028,6 +1885,39 @@ function beep(freq, duration) {
   osc.stop(audioContext.currentTime + duration + 0.02);
 }
 
+function roundRect(x, y, w, h, r, fill) {
+  const radius = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  else ctx.stroke();
+}
+
+function drawShadow(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function seededWave(seed) {
+  return Math.sin(seed * 12.9898 + pathSeed * 78.233) * 0.5 + Math.sin(seed * 4.31) * 0.25;
+}
+
+function numberToHex(value) {
+  const color = Number(value || 0x4fd1a5).toString(16).padStart(6, "0");
+  return `#${color.slice(-6)}`;
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -2042,7 +1932,7 @@ document.querySelector("#enterButton").addEventListener("click", () => showScree
 document.querySelector("#leaderboardButton").addEventListener("click", showLeaderboard);
 document.querySelector("#resultLeaderboardButton").addEventListener("click", showLeaderboard);
 document.querySelector("#closeLeaderboardButton").addEventListener("click", () => {
-  if (state === "title") showScreen("title");
+  if (gameMode === "title") showScreen("title");
   else hideScreens();
 });
 document.querySelector("#againButton").addEventListener("click", () => showScreen("setup"));
@@ -2050,7 +1940,7 @@ document.querySelector("#leftButton").addEventListener("click", () => walk("left
 document.querySelector("#rightButton").addEventListener("click", () => walk("right"));
 ui.soundButton.addEventListener("click", () => {
   soundOn = !soundOn;
-  ui.soundButton.textContent = soundOn ? "音" : "靜";
+  ui.soundButton.textContent = soundOn ? "音效開" : "音效關";
 });
 
 document.querySelector("#setupForm").addEventListener("submit", (event) => {
@@ -2071,10 +1961,8 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") walk("left");
   if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") walk("right");
   const optionIndex = Number(event.key) - 1;
-  if (state === "combat" && optionIndex >= 0 && optionIndex < 4) {
-    ui.options.children[optionIndex]?.click();
-  }
+  if (gameMode === "battle" && optionIndex >= 0 && optionIndex < 4) ui.options.children[optionIndex]?.click();
 });
 
-initScene();
+init2D();
 updateHud();

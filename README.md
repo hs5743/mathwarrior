@@ -1,12 +1,12 @@
 # 數學勇者 MathWarrior
 
-`MathWarrior` 是一個可放上 GitHub Pages 的 3D 數學冒險雛型。玩家選擇角色後進入迷宮，透過小數、分數與除法題目擊敗守衛，完成 16 道封印。內建題庫目前已匯入 89 題。
+`MathWarrior` 是一個可放上 GitHub Pages 的 2D 偽 3D 數學冒險雛型。玩家選擇角色後進入迷宮，透過小數、分數與除法題目擊敗守衛，完成 16 道封印。內建題庫目前已匯入 89 題。
 
 ## 檔案
 
 - `index.html`：頁面結構
 - `styles.css`：介面、手機版與視覺樣式
-- `game.js`：Three.js 場景、題目流程、排行榜與本機紀錄
+- `game.js`：Canvas 2D 偽 3D 場景、題目流程、排行榜與本機紀錄
 
 ## 部署到 GitHub Pages
 
